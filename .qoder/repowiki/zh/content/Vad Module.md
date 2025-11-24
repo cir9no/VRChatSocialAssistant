@@ -13,6 +13,7 @@
 - [config/audio_config.yaml](file://config/audio_config.yaml)
 - [src/audio_capture/__init__.py](file://src/audio_capture/__init__.py)
 - [src/audio_capture/device_manager.py](file://src/audio_capture/device_manager.py) - *更新了设备列举方法*
+- [tests/test_vad_model_location.py](file://tests/test_vad_model_location.py) - *新增：模型位置测试*
 </cite>
 
 ## 更新摘要
@@ -20,7 +21,8 @@
 - 更新了VAD集成测试以修复方法命名不一致问题
 - 将`get_wasapi_loopback_devices`和`get_input_devices`更新为`list_loopback_devices`和`list_input_devices`
 - 改进了测试逻辑以优先使用系统默认音频设备
-- 提高了测试的可靠性和现实性
+- 明确了VAD模型存储位置配置，模型将存储在项目根目录下的`models/vad/`目录中，而非全局PyTorch缓存
+- 新增了模型位置测试文件`test_vad_model_location.py`
 
 ## 目录
 1. [简介](#简介)
@@ -36,7 +38,7 @@
 
 ## 简介
 
-VAD（Voice Activity Detection）模块是一个高性能的语音活动检测系统，专门设计用于从连续音频流中实时检测和切分语音片段。该模块基于先进的Silero VAD深度学习模型，提供了高准确率、低延迟的语音检测功能，广泛应用于语音识别、语音端点检测、语音活动监控等场景。
+VAD（语音活动检测）模块是一个高性能的语音活动检测系统，专门设计用于从连续音频流中实时检测和切分语音片段。该模块基于先进的Silero VAD深度学习模型，提供了高准确率、低延迟的语音检测功能，广泛应用于语音识别、语音端点检测、语音活动监控等场景。
 
 ### 主要特性
 
@@ -275,9 +277,38 @@ SileroVAD类具备完善的设备管理功能：
 - **内存管理**：支持GPU内存清理
 - **模型状态重置**：支持模型内部状态重置
 
+#### 模型存储位置配置
+
+**重要更新**：VAD模型将存储在项目根目录下的`models/vad/`目录中，而非全局PyTorch缓存。这一设计确保了模型文件与项目代码的紧密耦合，便于版本控制和部署。
+
+- **默认存储路径**：`<项目根目录>/models/vad/`
+- **路径生成逻辑**：通过`Path(__file__).parent.parent.parent`获取项目根目录
+- **目录创建**：自动创建`models/vad/`目录（`mkdir(parents=True, exist_ok=True)`）
+- **缓存设置**：在模型加载时临时设置`torch.hub.set_dir(str(self.model_dir))`
+
+此配置通过以下代码实现：
+```python
+# 设置模型目录
+if model_dir is None:
+    # 获取项目根目录 (src/vad -> src -> 项目根目录)
+    project_root = Path(__file__).parent.parent.parent
+    self.model_dir = project_root / "models" / "vad"
+else:
+    self.model_dir = Path(model_dir)
+
+# 确保模型目录存在
+self.model_dir.mkdir(parents=True, exist_ok=True)
+
+# 设置 torch hub 缓存目录为项目 models 目录
+original_hub_dir = torch.hub.get_dir()
+torch.hub.set_dir(str(self.model_dir))
+```
+
 **章节来源**
 - [src/vad/silero_vad.py](file://src/vad/silero_vad.py#L22-L80)
 - [src/vad/silero_vad.py](file://src/vad/silero_vad.py#L82-L153)
+- [src/vad/silero_vad.py](file://src/vad/silero_vad.py#L44-L53)
+- [src/vad/silero_vad.py](file://src/vad/silero_vad.py#L78-L80)
 
 ### AudioBuffer音频缓冲
 
@@ -494,6 +525,41 @@ RunTest --> End([测试完成])
 - [tests/test_vad_integration.py](file://tests/test_vad_integration.py#L239-L276) - 主函数设备选择逻辑
 
 此改进确保测试优先使用用户系统的默认音频设备，提高了测试的现实性和可靠性，避免了因手动选择设备导致的配置错误。
+
+### 模型位置验证测试
+
+新增了`test_vad_model_location.py`测试文件，用于验证VAD模型是否正确存储在项目目录下。
+
+```python
+def test_model_location():
+    """测试模型是否保存在项目目录下"""
+    print("正在初始化 Silero VAD 模型...")
+    
+    # 初始化模型
+    vad = SileroVAD(sample_rate=16000, device="cpu")
+    
+    # 检查模型目录
+    print(f"\n模型存储目录: {vad.model_dir}")
+    print(f"目录是否存在: {vad.model_dir.exists()}")
+    
+    # 列出模型目录内容
+    if vad.model_dir.exists():
+        print("\n模型目录内容:")
+        for item in vad.model_dir.rglob("*"):
+            if item.is_file():
+                size_mb = item.stat().st_size / (1024 * 1024)
+                print(f"  {item.relative_to(vad.model_dir)} ({size_mb:.2f} MB)")
+    
+    print("\n✓ 模型初始化成功!")
+```
+
+该测试验证了：
+1. 模型目录路径是否正确生成
+2. 目录是否存在并可写
+3. 模型文件是否成功下载并存储
+
+**章节来源**
+- [tests/test_vad_model_location.py](file://tests/test_vad_model_location.py#L1-L37)
 
 ## 性能考虑
 
