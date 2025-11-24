@@ -29,3 +29,41 @@ preprocessing:
   
   # 音量阈值 (低于此值视为静音)
   silence_threshold: 0.01
+
+# VAD (语音活动检测) 配置
+vad:
+  # VAD 模型类型
+  model_type: "silero"  # silero / webrtc
+  
+  # 推理设备
+  device: "cpu"  # cpu / cuda
+  
+  # 语音检测阈值 (0.0-1.0)
+  # 提高阈值减少误检，降低阈值提高灵敏度
+  threshold: 0.5
+  
+  # 最小语音片段时长 (毫秒)
+  # 过短的语音片段会被过滤
+  min_speech_duration_ms: 250
+  
+  # 最大语音片段时长 (毫秒)
+  # 超长片段会被强制切分
+  max_speech_duration_ms: 10000
+  
+  # 切分静音时长 (毫秒)
+  # 语音间隔的静音时长
+  min_silence_duration_ms: 300
+  
+  # 语音片段前后填充时长 (毫秒)
+  # 避免切掉语音起止边缘
+  speech_pad_ms: 30
+  
+  # 窗口大小 (样本数)
+  # 必须是 Silero 支持的尺寸: 256, 512, 1024
+  window_size_samples: 512
+  
+  # 启用自适应阈值
+  adaptive_threshold: false
+  
+  # 调试模式（记录详细日志）
+  debug: false
