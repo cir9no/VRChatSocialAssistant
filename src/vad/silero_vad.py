@@ -8,6 +8,8 @@ import torch
 import numpy as np
 from typing import Optional
 import logging
+import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,8 @@ class SileroVAD:
         self,
         sample_rate: int = 16000,
         device: str = "cpu",
-        force_reload: bool = False
+        force_reload: bool = False,
+        model_dir: Optional[str] = None
     ):
         """
         初始化 Silero VAD 模型
@@ -32,10 +35,24 @@ class SileroVAD:
             sample_rate: 音频采样率，支持 8000/16000 Hz
             device: 推理设备，'cpu' 或 'cuda'
             force_reload: 是否强制重新下载模型
+            model_dir: 模型存储目录，默认为项目根目录下的 models/vad/
         """
         self.sample_rate = sample_rate
         self.device = device
         self.force_reload = force_reload
+        
+        # 设置模型目录
+        if model_dir is None:
+            # 获取项目根目录 (src/vad -> src -> 项目根目录)
+            project_root = Path(__file__).parent.parent.parent
+            self.model_dir = project_root / "models" / "vad"
+        else:
+            self.model_dir = Path(model_dir)
+        
+        # 确保模型目录存在
+        self.model_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"模型存储目录: {self.model_dir}")
         
         # 验证采样率
         if sample_rate not in [8000, 16000]:
@@ -54,18 +71,26 @@ class SileroVAD:
         logger.info(f"Silero VAD 已初始化: sample_rate={sample_rate}, device={self.device}")
     
     def _load_model(self):
-        """从 torch hub 加载 Silero VAD 模型"""
+        """从本地或 torch hub 加载 Silero VAD 模型"""
         try:
             logger.info("正在加载 Silero VAD 模型...")
             
-            # 从 torch hub 加载模型
-            model, utils = torch.hub.load(
-                repo_or_dir='snakers4/silero-vad',
-                model='silero_vad',
-                force_reload=self.force_reload,
-                onnx=False,
-                trust_repo=True
-            )
+            # 设置 torch hub 缓存目录为项目 models 目录
+            original_hub_dir = torch.hub.get_dir()
+            torch.hub.set_dir(str(self.model_dir))
+            
+            try:
+                # 从 torch hub 加载模型（会自动使用我们设置的缓存目录）
+                model, utils = torch.hub.load(
+                    repo_or_dir='snakers4/silero-vad',
+                    model='silero_vad',
+                    force_reload=self.force_reload,
+                    onnx=False,
+                    trust_repo=True
+                )
+            finally:
+                # 恢复原始的 torch hub 目录设置
+                torch.hub.set_dir(original_hub_dir)
             
             self.model = model.to(self.device)
             self.model.eval()
@@ -73,7 +98,7 @@ class SileroVAD:
             # 提取工具函数（虽然我们不直接使用，但保留以备后用）
             self._utils = utils
             
-            logger.info("Silero VAD 模型加载成功")
+            logger.info(f"Silero VAD 模型加载成功，模型位置: {self.model_dir}")
             
         except Exception as e:
             logger.error(f"加载 Silero VAD 模型失败: {e}", exc_info=True)

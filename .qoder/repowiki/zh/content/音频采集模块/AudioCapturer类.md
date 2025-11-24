@@ -16,16 +16,15 @@
 4. [初始化参数配置详解](#初始化参数配置详解)
 5. [音频采集工作流程](#音频采集工作流程)
 6. [回调函数处理机制](#回调函数处理机制)
-7. [队列管理与生产者-消费者模式](#队列管理与生产者-消费者模式)
-8. [性能监控与统计](#性能监控与统计)
-9. [配置优化指南](#配置优化指南)
-10. [上下文管理器使用模式](#上下文管理器使用模式)
-11. [故障排除指南](#故障排除指南)
-12. [总结](#总结)
+7. [性能监控与统计](#性能监控与统计)
+8. [配置优化指南](#配置优化指南)
+9. [上下文管理器使用模式](#上下文管理器使用模式)
+10. [故障排除指南](#故障排除指南)
+11. [总结](#总结)
 
 ## 简介
 
-AudioCapturer类是VRChat社交助手项目中实现双路音频同步采集的核心组件。它能够同时采集WASAPI Loopback音频（系统音频输出）和麦克风音频输入，为语音识别和音频处理提供高质量的音频数据流。该类采用多线程架构，通过回调函数机制实现非阻塞式音频采集，并提供了完善的性能监控和资源管理功能。
+AudioCapturer类是VRChat社交助手项目中实现双路音频同步采集的核心组件。它能够同时采集WASAPI Loopback音频（系统音频输出）和麦克风音频输入，为语音识别和音频处理提供高质量的音频数据流。该类采用多线程架构，通过回调函数机制实现非阻塞式音频采集，并提供了完善的性能监控和资源管理功能。最近更新中，该类增加了自动音频重采样功能，支持从WASAPI loopback设备的原生采样率（通常为48kHz）转换到目标处理采样率（16kHz），并修正了帧计数逻辑以使用重采样后的音频数据长度。
 
 ## 项目结构概览
 
@@ -58,14 +57,14 @@ TEST --> DM
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L1-L325)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L1-L359)
 - [device_manager.py](file://src/audio_capture/device_manager.py#L1-L267)
-- [audio_config.yaml](file://config/audio_config.yaml#L1-L32)
+- [audio_config.yaml](file://config/audio_config.yaml#L1-L70)
 
 **章节来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L1-L325)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L1-L359)
 - [device_manager.py](file://src/audio_capture/device_manager.py#L1-L267)
-- [__init__.py](file://src/audio_capture/__init__.py#L1-L11)
+- [__init__.py](file://src/audio_capture/__init__.py#L1-L10)
 
 ## AudioCapturer类核心架构
 
@@ -107,6 +106,7 @@ class AudioCapturer {
 +__del__()
 -_loopback_audio_callback(in_data, frame_count, time_info, status)
 -_microphone_audio_callback(in_data, frame_count, time_info, status)
+-_resample_audio(audio_data, orig_sr, target_sr)
 }
 class DeviceManager {
 +PyAudio p
@@ -130,11 +130,11 @@ AudioCapturer --> DeviceManager : "使用"
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L19-L325)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L19-L359)
 - [device_manager.py](file://src/audio_capture/device_manager.py#L14-L267)
 
 **章节来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L19-L325)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L19-L359)
 - [device_manager.py](file://src/audio_capture/device_manager.py#L14-L267)
 
 ## 初始化参数配置详解
@@ -179,11 +179,11 @@ ValidateConfig --> Success([配置完成])
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L26-L51)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L26-L82)
 - [audio_config.yaml](file://config/audio_config.yaml#L5-L12)
 
 **章节来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L26-L51)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L26-L82)
 - [audio_config.yaml](file://config/audio_config.yaml#L5-L12)
 
 ## 音频采集工作流程
@@ -237,7 +237,7 @@ end
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L154-L214)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L185-L249)
 
 ### WASAPI Loopback流配置
 
@@ -245,6 +245,7 @@ WASAPI Loopback流专门用于采集系统音频输出，具有以下特点：
 - **设备选择**：优先使用默认WASAPI Loopback设备，支持多声道输出
 - **采样率适配**：使用设备的默认采样率而非固定值
 - **声道处理**：通常为双声道，支持自动转换为单声道
+- **重采样机制**：新增了从设备原生采样率到目标处理采样率的自动重采样功能
 
 ### 麦克风音频流配置
 
@@ -254,7 +255,7 @@ WASAPI Loopback流专门用于采集系统音频输出，具有以下特点：
 - **格式统一**：使用16位整数格式保证兼容性
 
 **章节来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L154-L214)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L185-L249)
 
 ## 回调函数处理机制
 
@@ -271,8 +272,11 @@ IncOverflow --> GenTimestamp
 GenTimestamp --> ConvertData[字节数据转换]
 ConvertData --> CheckChannels{检查声道数}
 CheckChannels --> |单声道且双声道数据| ConvertToMono[转换为单声道]
-CheckChannels --> |其他情况| PutQueue[放入队列]
-ConvertToMono --> PutQueue
+CheckChannels --> |其他情况| CheckResample{检查是否需要重采样}
+ConvertToMono --> CheckResample
+CheckResample --> |需要重采样| ResampleAudio[执行重采样]
+CheckResample --> |无需重采样| PutQueue[放入队列]
+ResampleAudio --> PutQueue
 PutQueue --> IncFrames[增加帧计数]
 IncFrames --> CheckCallback{检查用户回调}
 CheckCallback --> |有回调函数| CallUserCallback[调用用户回调]
@@ -285,7 +289,7 @@ Return --> End([回调函数结束])
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L98-L124)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L125-L155)
 
 ### 数据处理流程详解
 
@@ -310,12 +314,17 @@ Return --> End([回调函数结束])
    - 使用均值算法转换为单声道
    - 保持音频质量的同时减少数据量
 
-5. **队列管理**
+5. **重采样处理**（新增功能）
+   - 检查设备原生采样率与目标采样率是否不同
+   - 调用_resample_audio方法执行重采样
+   - 使用scipy.signal.resample进行高质量重采样
+
+6. **队列管理**
    - 将处理后的音频数据和时间戳打包
    - 放入对应的音频队列
    - 支持异步数据获取
 
-6. **用户回调调用**
+7. **用户回调调用**
    - 检查并调用用户自定义回调函数
    - 异常捕获和日志记录
    - 保证主流程不受影响
@@ -346,109 +355,10 @@ AudioCapturer --> UserApplication : "注入"
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L80-L96)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L84-L101)
 
 **章节来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L98-L152)
-
-## 队列管理与生产者-消费者模式
-
-AudioCapturer采用Queue模块实现生产者-消费者模式，确保音频数据的高效传输和处理：
-
-### 队列架构设计
-
-```mermaid
-graph TB
-subgraph "生产者端音频流回调"
-LB_Stream[WASAPI Loopback Stream]
-MIC_Stream[Microphone Stream]
-LB_Callback[_loopback_audio_callback]
-MIC_Callback[_microphone_audio_callback]
-end
-subgraph "队列管理"
-LB_Queue[loopback_queue]
-MIC_Queue[microphone_queue]
-end
-subgraph "消费者端应用程序"
-LB_Get[get_loopback_audio]
-MIC_Get[get_microphone_audio]
-App_Process[应用程序处理]
-end
-LB_Stream --> LB_Callback
-MIC_Stream --> MIC_Callback
-LB_Callback --> LB_Queue
-MIC_Callback --> MIC_Queue
-LB_Queue --> LB_Get
-MIC_Queue --> MIC_Get
-LB_Get --> App_Process
-MIC_Get --> App_Process
-```
-
-**图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L56-L58)
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L248-L276)
-
-### get_loopback_audio和get_microphone_audio方法
-
-这两个阻塞式获取方法提供了灵活的数据访问机制：
-
-| 方法 | 功能 | 参数 | 返回值 | 特点 |
-|------|------|------|--------|------|
-| get_loopback_audio | 获取WASAPI Loopback音频数据 | timeout: float | Optional[Tuple[np.ndarray, float]] | 支持超时机制 |
-| get_microphone_audio | 获取麦克风音频数据 | timeout: float | Optional[Tuple[np.ndarray, float]] | 支持超时机制 |
-
-### 阻塞式数据获取机制
-
-```mermaid
-sequenceDiagram
-participant App as "应用程序"
-participant Queue as "音频队列"
-participant Callback as "回调函数"
-App->>Queue : get_loopback_audio(timeout=0.1)
-Queue->>Queue : 检查队列状态
-alt 队列中有数据
-Queue-->>App : 返回(audio_data, timestamp)
-else 队列为空且超时
-Queue-->>App : 返回None
-else 队列异常
-Queue-->>App : 捕获异常并返回None
-end
-Note over Callback,Queue : 异步数据生产
-Callback->>Queue : put((audio_data, timestamp))
-Queue->>Queue : 存储数据
-Note over App,Callback : 应用程序可以随时获取最新数据
-```
-
-**图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L248-L276)
-
-### 队列清理机制
-
-clear_queues方法提供了队列状态重置功能：
-
-```mermaid
-flowchart TD
-Start([开始清理]) --> CheckLoopback{检查WASAPI Loopback队列}
-CheckLoopback --> |队列不为空| GetLoopback[获取队列数据]
-CheckLoopback --> |队列为空| CheckMicrophone{检查麦克风队列}
-GetLoopback --> LoopbackEmpty{队列是否为空}
-LoopbackEmpty --> |否| GetLoopback
-LoopbackEmpty --> |是| CheckMicrophone
-CheckMicrophone --> |队列不为空| GetMicrophone[获取队列数据]
-CheckMicrophone --> |队列为空| LogClear[记录清理日志]
-GetMicrophone --> MicrophoneEmpty{队列是否为空}
-MicrophoneEmpty --> |否| GetMicrophone
-MicrophoneEmpty --> |是| LogClear
-LogClear --> End([清理完成])
-```
-
-**图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L295-L309)
-
-**章节来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L56-L58)
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L248-L276)
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L295-L309)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L125-L155)
 
 ## 性能监控与统计
 
@@ -475,7 +385,7 @@ AudioCapturer --> Statistics : "收集"
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L278-L293)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L313-L328)
 
 ### 性能指标详解
 
@@ -512,8 +422,8 @@ Return --> End([回调结束])
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L100-L102)
 - [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L129-L131)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L147-L148)
 
 ### 性能优化建议
 
@@ -537,9 +447,9 @@ MonitorHealth --> Monitor
 ```
 
 **章节来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L278-L293)
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L100-L102)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L313-L328)
 - [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L129-L131)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L147-L148)
 
 ## 配置优化指南
 
@@ -585,7 +495,7 @@ TestPerformance --> Success([配置完成])
 ```
 
 **图表来源**
-- [audio_config.yaml](file://config/audio_config.yaml#L5-L31)
+- [audio_config.yaml](file://config/audio_config.yaml#L5-L70)
 
 ### 设备配置优化
 
@@ -620,7 +530,7 @@ DM-->>App : 设备列表界面
 - [device_manager.py](file://src/audio_capture/device_manager.py#L14-L267)
 
 **章节来源**
-- [audio_config.yaml](file://config/audio_config.yaml#L5-L31)
+- [audio_config.yaml](file://config/audio_config.yaml#L5-L70)
 - [device_manager.py](file://src/audio_capture/device_manager.py#L14-L267)
 
 ## 上下文管理器使用模式
@@ -646,7 +556,7 @@ ContextManager <|.. AudioCapturer
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L311-L319)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L346-L353)
 
 ### 使用模式对比
 
@@ -678,7 +588,7 @@ AC-->>App : 上下文退出完成
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L311-L319)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L346-L353)
 
 ### 资源自动管理机制
 
@@ -700,11 +610,11 @@ CleanupComplete --> ExitMethod[__exit__返回]
 ```
 
 **图表来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L311-L325)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L346-L359)
 
 **章节来源**
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L311-L319)
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L320-L325)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L346-L353)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L351-L353)
 
 ## 故障排除指南
 
@@ -785,8 +695,8 @@ BackgroundApps --> Performance
 ```
 
 **章节来源**
-- [test_audio_capture.py](file://tests/test_audio_capture.py#L193-L213)
-- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L154-L214)
+- [test_audio_capture.py](file://tests/test_audio_capture.py#L193-L212)
+- [audio_capturer.py](file://src/audio_capture/audio_capturer.py#L185-L249)
 
 ## 总结
 
@@ -799,6 +709,7 @@ AudioCapturer类作为VRChat社交助手项目的核心音频采集组件，展�
 3. **异步处理**：采用回调机制和队列管理，确保高性能和低延迟
 4. **资源管理**：完善的上下文管理和自动清理机制
 5. **性能监控**：全面的统计信息和溢出检测
+6. **自动重采样**：新增的重采样功能确保音频数据在统一采样率下处理
 
 ### 技术亮点
 
@@ -806,6 +717,7 @@ AudioCapturer类作为VRChat社交助手项目的核心音频采集组件，展�
 - **智能的设备适配**：自动检测和适配不同音频设备的能力
 - **健壮的错误处理**：完善的异常捕获和恢复机制
 - **可扩展的回调系统**：支持用户自定义音频处理逻辑
+- **高质量重采样**：使用scipy.signal.resample实现从48kHz到16kHz的高质量音频重采样
 
 ### 应用价值
 

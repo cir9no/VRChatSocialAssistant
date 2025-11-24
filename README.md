@@ -144,6 +144,12 @@
 pip install -r requirements.txt
 ```
 
+### 模型文件
+
+项目使用的模型文件会在首次运行时自动下载到 `models/` 目录下，无需手动下载。
+
+**VAD模型**: 首次运行时会从 PyTorch Hub 自动下载 Silero VAD 模型（约1-2MB）到 `models/vad/` 目录。
+
 ### 运行测试
 
 #### 测试音频采集
@@ -171,13 +177,17 @@ python tests/demo_vad.py
 ```
 VRChatSocialAssistant/
 ├── config/                 # 配置文件
-│   └── audio_config.yaml  # 音频和VAD配置
+│   ├── audio_config.yaml  # 音频和VAD配置
+│   └── memory_config.yaml # 记忆模块配置
 ├── doc/                   # 文档
 │   └── 架构设计.md        # 架构设计文档
+├── models/                # 模型文件目录
+│   └── vad/              # VAD模型存储目录
 ├── src/                   # 源代码
 │   ├── audio_capture/     # 音频采集模块
 │   │   ├── device_manager.py
 │   │   └── audio_capturer.py
+│   ├── memory/           # 记忆管理模块
 │   └── vad/              # VAD模块
 │       ├── audio_buffer.py
 │       ├── silero_vad.py

@@ -29,6 +29,14 @@ pip install torch>=2.0.0 torchaudio>=2.0.0 pyyaml>=6.0 numpy>=1.24.0
 pip install -r requirements.txt
 ```
 
+### 模型文件
+
+VAD 模块使用 Silero VAD 模型进行语音检测。模型文件会在首次运行时自动下载到项目目录下的 `models/vad/` 文件夹中，无需手动下载。
+
+**模型存储位置:** `<项目根目录>/models/vad/`
+
+首次运行时，模型会从 PyTorch Hub 自动下载（约 1-2 MB），下载完成后会保存在本地，后续使用时直接加载本地模型。
+
 ## 快速开始
 
 ### 基本使用
@@ -191,10 +199,21 @@ Silero VAD 模型封装类。
 ```python
 from vad import SileroVAD
 
+# 使用默认模型路径（项目根目录/models/vad/）
 vad = SileroVAD(sample_rate=16000, device="cpu")
+
+# 或者指定自定义模型路径
+vad = SileroVAD(sample_rate=16000, device="cpu", model_dir="/path/to/models")
+
 prob = vad.predict(audio_chunk)  # 返回语音概率 [0.0, 1.0]
 vad.reset_states()  # 重置模型状态
 ```
+
+**参数说明:**
+- `sample_rate`: 音频采样率 (8000 或 16000)
+- `device`: 推理设备 ("cpu" 或 "cuda")
+- `force_reload`: 是否强制重新下载模型
+- `model_dir`: 模型存储目录，默认为 `<项目根目录>/models/vad/`
 
 ### AudioBuffer
 
