@@ -1,0 +1,31 @@
+# 音频采集配置
+
+audio:
+  # 采样率 (Hz) - 16kHz 是语音转文本的标准采样率
+  samplerate: 16000
+  
+  # 声道数 - 1 为单声道, 2 为立体声
+  channels: 1
+  
+  # 缓冲区大小 (采样点数)
+  # 480 采样点 @ 16kHz = 30ms
+  chunk_size: 480
+  
+  # 音频格式 (paInt16, paFloat32 等)
+  format: "paInt16"
+  
+  # 设备设置 (null 表示自动选择，或手动指定)
+  # 运行测试脚本查看可用设备索引
+  wasapi_loopback_device: null  # WASAPI Loopback 设备索引 (系统音频)
+  microphone_device: null  # 麦克风设备索引
+
+# 音频预处理
+preprocessing:
+  # 启用降噪
+  enable_noise_reduction: false
+  
+  # 启用增益控制
+  enable_gain_control: false
+  
+  # 音量阈值 (低于此值视为静音)
+  silence_threshold: 0.01
