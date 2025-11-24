@@ -81,8 +81,19 @@
 - ✅ YAML配置文件支持
 - ✅ 音频参数配置
 - ✅ VAD参数配置
+- ✅ 记忆模块参数配置
 
-#### 4. 项目基础设施
+#### 4. 记忆管理模块 (完成度: 100%)
+- ✅ `MemoryManager`：统一的记忆操作入口
+- ✅ `ProfileStore`：好友档案管理（JSON存储）
+- ✅ `ConversationStore`：对话记录存储（SQLite）
+- ✅ `VectorDatabase`：向量数据库封装（Chroma后端）
+- ✅ `EmbeddingService`：文本嵌入服务（bge-m3模型）
+- ✅ `Retriever`：多策略检索器（语义/混合/时间衰减）
+- ✅ 模型自动下载功能
+- ✅ 完整的单元测试和演示代码
+
+#### 5. 项目基础设施
 - ✅ 项目结构设计
 - ✅ 依赖管理（requirements.txt）
 - ✅ Git版本控制
@@ -112,11 +123,7 @@
 - ⏳ 对话理解和分析
 - ⏳ 建议生成策略
 
-#### 4. 记忆管理模块 (优先级: 中)
-- ⏳ 向量数据库集成（Chroma）
-- ⏳ 好友档案管理
-- ⏳ 对话历史记录
-- ⏳ RAG检索增强
+
 
 #### 5. VR显示模块 (优先级: 低)
 - ⏳ OpenXR集成
@@ -150,6 +157,8 @@ pip install -r requirements.txt
 
 **VAD模型**: 首次运行时会从 PyTorch Hub 自动下载 Silero VAD 模型（约1-2MB）到 `models/vad/` 目录。
 
+**嵌入模型**: 首次运行记忆管理模块时会从 ModelScope 自动下载 bge-m3 模型（约2GB）到 `models/embeddings/bge-m3/` 目录。
+
 ### 运行测试
 
 #### 测试音频采集
@@ -172,6 +181,11 @@ python tests/test_vad_integration.py
 python tests/demo_vad.py
 ```
 
+#### 测试记忆管理模块
+```bash
+python tests/test_memory_basic.py
+```
+
 ## 项目结构
 
 ```
@@ -182,7 +196,8 @@ VRChatSocialAssistant/
 ├── doc/                   # 文档
 │   └── 架构设计.md        # 架构设计文档
 ├── models/                # 模型文件目录
-│   └── vad/              # VAD模型存储目录
+│   ├── vad/              # VAD模型存储目录
+│   └── embeddings/       # 嵌入模型存储目录
 ├── src/                   # 源代码
 │   ├── audio_capture/     # 音频采集模块
 │   │   ├── device_manager.py
@@ -224,7 +239,7 @@ VRChatSocialAssistant/
 
 ### 中期目标（1-2月）
 1. LLM集成和对话理解
-2. 记忆管理系统
+2. 记忆管理与语音处理集成
 3. 基础UI原型
 
 ### 长期目标（3-6月）
