@@ -253,7 +253,8 @@ class IntegratedTest:
                 threshold=0.5,
                 min_speech_duration_ms=250,
                 max_speech_duration_ms=10000,
-                min_silence_duration_ms=300
+                min_silence_duration_ms=300,
+                device='cuda'  # 使用GPU
             )
             self.modules_initialized['vad'] = True
             return True
@@ -901,7 +902,8 @@ class IntegratedTest:
                 threshold=0.5,
                 min_speech_duration_ms=250,
                 max_speech_duration_ms=10000,
-                min_silence_duration_ms=300
+                min_silence_duration_ms=300,
+                device='cuda'  # 使用GPU
             )
         
         # 统计数据
@@ -1118,7 +1120,21 @@ class IntegratedTest:
             print_error("STT 模块未初始化，请先运行系统初始化")
             return
         
-        print_info("使用合成音频进行 STT 测试")
+        options = {
+            '1': '实时识别游戏语音（中文）',
+            '2': '使用合成音频测试'
+        }
+        
+        choice = show_menu("STT 测试模式", options)
+        
+        if choice == '1':
+            self.test_stt_realtime()
+        elif choice == '2':
+            self.test_stt_synthetic()
+    
+    def test_stt_synthetic(self):
+        """使用合成音频测试 STT"""
+        print_subtitle("合成音频测试")
         print_warning("注意: 合成音频识别可能失败（这是正常的）")
         print()
         
@@ -1129,7 +1145,7 @@ class IntegratedTest:
             print_info("开始识别...")
             
             with PerformanceTimer() as timer:
-                result = self.stt_recognizer.recognize(audio)
+                result = self.stt_recognizer.recognize(audio, language='zh')
             
             print()
             print_subtitle("识别结果")
@@ -1147,6 +1163,243 @@ class IntegratedTest:
         except Exception as e:
             logger.error(f"STT 测试失败: {e}", exc_info=True)
             print_error(f"STT 测试失败: {e}")
+    
+    def test_stt_realtime(self):
+        """实时识别游戏语音（中文）"""
+        from audio_capture import DeviceManager, AudioCapturer
+        import threading
+        import queue
+        
+        print_title("实时语音识别（中文）")
+        print_info("从游戏音频中实时识别并转换为文字")
+        print()
+        
+        # 获取 WASAPI Loopback 设备
+        device_manager = DeviceManager()
+        loopback_device = device_manager.get_default_wasapi_loopback()
+        
+        if not loopback_device:
+            print_error("未找到 WASAPI Loopback 设备")
+            return
+        
+        print_info(f"使用设备: {loopback_device['name']}")
+        print()
+        
+        # 配置参数
+        print_subtitle("测试配置")
+        duration = get_number_input("测试时长（秒，0表示手动停止）", 60)
+        save_results = confirm("是否保存识别结果？", default=True)
+        
+        print()
+        print_warning("提示：")
+        print("  1. 请确保游戏音量合适")
+        print("  2. 程序将实时识别中文语音")
+        print("  3. VAD检测到语音后自动进行识别")
+        print("  4. 按 Ctrl+C 可随时停止")
+        print()
+        
+        if not confirm("准备开始实时识别？"):
+            return
+        
+        # 初始化 VAD（如果还没有）
+        if not self.vad_detector:
+            from vad import VADDetector
+            self.vad_detector = VADDetector(
+                sample_rate=16000,
+                threshold=0.5,
+                min_speech_duration_ms=250,
+                max_speech_duration_ms=10000,
+                min_silence_duration_ms=300,
+                device='cuda'  # 使用GPU
+            )
+        
+        # 统计数据
+        stats = {
+            'total_segments': 0,
+            'success_count': 0,
+            'failed_count': 0,
+            'empty_count': 0,
+            'start_time': time.time(),
+            'results': []
+        }
+        
+        # 控制标志
+        running = {'flag': True}
+        
+        # 语音片段队列
+        vad_queue = queue.Queue(maxsize=20)
+        
+        # VAD 回调
+        def vad_callback(segment, metadata):
+            if running['flag']:
+                vad_queue.put((segment, metadata, time.time()))
+        
+        self.vad_detector.set_callback(vad_callback)
+        
+        # 音频采集回调
+        def audio_callback(audio_data, timestamp):
+            if running['flag']:
+                try:
+                    self.vad_detector.process_audio(audio_data, timestamp)
+                except Exception as e:
+                    logger.error(f"VAD处理错误: {e}")
+        
+        # 识别处理线程
+        def recognition_thread():
+            while running['flag']:
+                try:
+                    segment, metadata, detect_time = vad_queue.get(timeout=1.0)
+                    stats['total_segments'] += 1
+                    
+                    # STT识别（指定中文）
+                    try:
+                        stt_result = self.stt_recognizer.recognize(
+                            audio_data=segment,
+                            sample_rate=16000,
+                            language='zh'  # 明确指定中文识别
+                        )
+                        
+                        elapsed = time.time() - stats['start_time']
+                        
+                        if stt_result.success and stt_result.text.strip():
+                            stats['success_count'] += 1
+                            
+                            # 记录结果
+                            result = {
+                                'timestamp': detect_time,
+                                'text': stt_result.text,
+                                'confidence': stt_result.confidence,
+                                'duration': metadata.get('duration', 0),
+                                'engine': stt_result.engine_type
+                            }
+                            stats['results'].append(result)
+                            
+                            # 实时显示
+                            print(f"\n[{format_duration(elapsed)}] 识别成功:")
+                            print(f"  文本: \"{stt_result.text}\"")
+                            print(f"  置信度: {stt_result.confidence:.2f} | 时长: {metadata.get('duration', 0):.2f}s | 引擎: {stt_result.engine_type}")
+                        elif stt_result.success and not stt_result.text.strip():
+                            stats['empty_count'] += 1
+                            print(f"\n[{format_duration(elapsed)}] 识别结果为空（可能是噪音）")
+                        else:
+                            stats['failed_count'] += 1
+                            print(f"\n[{format_duration(elapsed)}] 识别失败: {stt_result.error_message}")
+                    
+                    except Exception as e:
+                        logger.error(f"STT识别错误: {e}", exc_info=True)
+                        stats['failed_count'] += 1
+                        print_error(f"识别错误: {e}")
+                
+                except queue.Empty:
+                    continue
+                except Exception as e:
+                    logger.error(f"处理线程错误: {e}", exc_info=True)
+        
+        # 创建采集器
+        try:
+            capturer = AudioCapturer(
+                loopback_device=loopback_device['index'],
+                samplerate=16000,
+                channels=1,
+                chunk_size=480
+            )
+            capturer.set_loopback_callback(audio_callback)
+        except Exception as e:
+            print_error(f"音频采集器创建失败: {e}")
+            return
+        
+        # 启动识别线程
+        recog_thread = threading.Thread(target=recognition_thread, daemon=True)
+        recog_thread.start()
+        
+        # 开始采集
+        print_separator()
+        print_subtitle("开始实时识别（中文）")
+        print_info("按 Ctrl+C 停止识别")
+        print_separator()
+        print()
+        
+        try:
+            capturer.start()
+            start_time = time.time()
+            
+            # 主循环
+            while running['flag']:
+                time.sleep(0.5)
+                
+                # 检查时长
+                if duration > 0 and (time.time() - start_time) >= duration:
+                    print_info("\n测试时长已到，停止识别")
+                    break
+                
+                # 显示简单状态（每5秒）
+                if int(time.time() - start_time) % 5 == 0:
+                    elapsed = time.time() - start_time
+                    print(f"\r运行中... {format_duration(elapsed)} | "
+                          f"检测片段: {stats['total_segments']} | "
+                          f"识别成功: {stats['success_count']}",
+                          end='', flush=True)
+        
+        except KeyboardInterrupt:
+            print("\n\n用户中断识别")
+        finally:
+            # 停止采集和处理
+            running['flag'] = False
+            capturer.stop()
+            recog_thread.join(timeout=3)
+        
+        # 显示统计报告
+        print("\n")
+        print_separator("=")
+        print_title("识别统计报告")
+        print_separator("=")
+        
+        total_time = time.time() - stats['start_time']
+        
+        print(f"\n测试时长: {format_duration(total_time)}")
+        print(f"检测语音片段: {stats['total_segments']}")
+        print(f"识别成功: {stats['success_count']}")
+        print(f"识别失败: {stats['failed_count']}")
+        print(f"空结果: {stats['empty_count']}")
+        
+        if stats['total_segments'] > 0:
+            success_rate = stats['success_count'] / stats['total_segments'] * 100
+            print(f"成功率: {success_rate:.1f}%")
+        
+        # 显示识别结果
+        if stats['results']:
+            print("\n识别结果列表:")
+            for i, result in enumerate(stats['results'][-10:], 1):  # 显示最后10条
+                elapsed = result['timestamp'] - stats['start_time']
+                print(f"\n{i}. [{format_duration(elapsed)}]")
+                print(f"   文本: \"{result['text']}\"")
+                print(f"   置信度: {result['confidence']:.2f} | 时长: {result['duration']:.2f}s")
+        
+        # 保存结果
+        if save_results and stats['results']:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            result_file = project_root / f"tests/stt_test_{timestamp}_results.txt"
+            
+            try:
+                with open(result_file, 'w', encoding='utf-8') as f:
+                    f.write(f"STT 实时识别测试结果（中文）\n")
+                    f.write(f"测试时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"测试时长: {format_duration(total_time)}\n")
+                    f.write("=" * 60 + "\n\n")
+                    
+                    for i, result in enumerate(stats['results'], 1):
+                        elapsed = result['timestamp'] - stats['start_time']
+                        f.write(f"[{format_duration(elapsed)}]\n")
+                        f.write(f"文本: {result['text']}\n")
+                        f.write(f"置信度: {result['confidence']:.2f} | 时长: {result['duration']:.2f}s | 引擎: {result['engine']}\n\n")
+                
+                print(f"\n识别结果已保存: {result_file.name}")
+            except Exception as e:
+                logger.error(f"保存结果失败: {e}")
+        
+        print()
+        print_success("✓ 实时STT识别测试完成！")
     
     def test_memory(self):
         """测试记忆管理模块"""
@@ -1479,10 +1732,14 @@ class IntegratedTest:
                             logger.error(f"说话人识别错误: {e}")
                             stats['speaker_unknowns'] += 1
                     
-                    # STT识别（仅对已匹配的说话人）
+                    # STT识别（仅对已匹配的说话人，使用中文）
                     if not enable_speaker or (speaker_result and speaker_result.matched):
                         try:
-                            stt_result = self.stt_recognizer.recognize(segment)
+                            stt_result = self.stt_recognizer.recognize(
+                                audio_data=segment,
+                                sample_rate=16000,
+                                language='zh'  # 明确指定中文识别
+                            )
                             
                             if stt_result.success and stt_result.text.strip():
                                 stats['stt_success'] += 1

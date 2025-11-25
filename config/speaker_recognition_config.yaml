@@ -3,8 +3,8 @@
 # 声纹提取模型配置
 embedding:
   model_name: "ecapa-tdnn"
-  model_path: "models/speaker_recognition/ecapa-tdnn/"
-  device: "auto"  # auto, cpu, cuda
+  model_path: "models/speaker_recognition/iic/speech_ecapa-tdnn_sv_en_voxceleb_16k"  # 修复：统一为 ModelScope 下载路径
+  device: "cuda"  # auto, cpu, cuda (使用GPU)
   auto_download: true
   download_source: "modelscope"
   embedding_dim: 192

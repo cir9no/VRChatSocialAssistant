@@ -12,10 +12,10 @@ stt:
   # 本地引擎配置
   local:
     model_path: models/stt/faster-whisper/
-    model_size: medium                # tiny/base/small/medium/large
-    device: auto                      # cpu/cuda/auto
-    compute_type: int8                # float32/float16/int8 (CPU使用int8)
-    language: auto                    # zh/en/auto
+    model_size: base                  # tiny/base/small/medium/large
+    device: cuda                      # cpu/cuda/auto (使用GPU)
+    compute_type: float16             # float32/float16/int8 (GPU使用float16)
+    language: zh                      # zh/en/auto (默认中文)
     beam_size: 5                      # Beam search宽度
     best_of: 5                        # 采样候选数
     temperature: 0.0                  # 采样温度（0=贪婪解码）

@@ -24,7 +24,7 @@ class EmbeddingEngine:
     
     def __init__(
         self,
-        model_path: str = "models/speaker_recognition/ecapa-tdnn/",
+        model_path: str = "models/speaker_recognition/iic/speech_ecapa-tdnn_sv_en_voxceleb_16k",  # 修复：统一为 ModelScope 下载路径
         sample_rate: int = 16000,
         device: str = "auto",
         auto_download: bool = True,
@@ -129,8 +129,21 @@ class EmbeddingEngine:
         """
         try:
             # 首先尝试加载 ModelScope 格式的模型
-            modelscope_model_path = Path("models/speaker_recognition/iic/speech_ecapa-tdnn_sv_en_voxceleb_16k")
-            if modelscope_model_path.exists():
+            # 修复：检查多种可能的路径
+            possible_paths = [
+                self.model_path,  # 配置的路径
+                Path("models/speaker_recognition/iic/speech_ecapa-tdnn_sv_en_voxceleb_16k"),
+                Path("models/speaker_recognition/iic/iic/speech_ecapa-tdnn_sv_en_voxceleb_16k"),  # ModelScope 可能生成的路径
+            ]
+            
+            modelscope_model_path = None
+            for path in possible_paths:
+                if path.exists() and (path / "ecapa_tdnn.bin").exists():
+                    modelscope_model_path = path
+                    logger.info(f"检测到 ModelScope 模型，路径: {path}")
+                    break
+            
+            if modelscope_model_path:
                 logger.info("检测到 ModelScope 模型，尝试加载...")
                 self._load_modelscope_model(modelscope_model_path)
                 return
@@ -181,29 +194,90 @@ class EmbeddingEngine:
         try:
             logger.info(f"从 ModelScope 加载模型: {model_path}")
             
-            # 优先尝试使用 Resemblyzer （简单易用且开源）
+            # 优先使用 SpeechBrain ECAPA-TDNN（不需 HuggingFace 认证）
             try:
-                from resemblyzer import VoiceEncoder
+                import speechbrain
+                from speechbrain.inference.speaker import EncoderClassifier
                 
-                logger.info("使用 Resemblyzer 加载真实声纹识别模型...")
+                logger.info("使用 SpeechBrain 加载 ECAPA-TDNN 模型...")
                 
-                # 创建 Resemblyzer 包装器
-                class ResemblyzerWrapper:
+                # 创建包装器
+                class SpeechBrainWrapper:
                     def __init__(self, device):
-                        # Resemblyzer 使用预训练的 GE2E 模型
-                        device_str = 'cuda' if 'cuda' in str(device) else 'cpu'
-                        self.encoder = VoiceEncoder(device=device_str)
                         self.device = device
-                        self.embedding_dim = 256  # Resemblyzer 嵌入维度
-                        logger.info(f"✓ Resemblyzer 初始化成功，设备: {device_str}")
+                        self.embedding_dim = 192
+                        
+                        # 使用 SpeechBrain 预训练 ECAPA 模型（从 HuggingFace 下载）
+                        self.classifier = EncoderClassifier.from_hparams(
+                            source="speechbrain/spkrec-ecapa-voxceleb",
+                            savedir="models/speaker_recognition/speechbrain",
+                            run_opts={"device": str(device)}
+                        )
+                        logger.info("✓ SpeechBrain ECAPA-TDNN 模型加载成功")
                     
                     def to(self, device):
-                        # Resemblyzer 不需要显式移动设备
                         self.device = device
                         return self
                     
                     def eval(self):
-                        # Resemblyzer 默认就是 eval 模式
+                        return self
+                    
+                    def __call__(self, waveform):
+                        import torch
+                        import numpy as np
+                        
+                        # 转换为正确格式
+                        if isinstance(waveform, np.ndarray):
+                            waveform = torch.from_numpy(waveform).float()
+                        
+                        # SpeechBrain 期望 [batch, time] 格式
+                        if waveform.ndim == 1:
+                            waveform = waveform.unsqueeze(0)
+                        
+                        waveform = waveform.to(self.device)
+                        
+                        # 提取嵌入
+                        with torch.no_grad():
+                            embedding = self.classifier.encode_batch(waveform)
+                        
+                        return embedding
+                
+                self.model = SpeechBrainWrapper(self.device)
+                logger.info("✓ 真实 ECAPA-TDNN 声纹识别模型加载成功（SpeechBrain）")
+                logger.info("✓ 使用真实的深度学习模型进行声纹识别")
+                return
+                
+            except ImportError as e:
+                logger.warning(f"SpeechBrain 未安装: {e}，尝试 ModelScope...")
+            except Exception as e:
+                logger.warning(f"SpeechBrain 加载失败: {e}，尝试 ModelScope...")
+            
+            pass
+            try:
+                from modelscope.pipelines import pipeline
+                from modelscope.utils.constant import Tasks
+                
+                logger.info("使用 ModelScope Pipeline 加载 ECAPA-TDNN 模型...")
+                
+                # 创建包装器使用 ModelScope pipeline
+                class ModelScopePipelineWrapper:
+                    def __init__(self, model_path, device):
+                        self.model_path = str(model_path)
+                        self.device = device
+                        self.embedding_dim = 192
+                        
+                        # 使用 ModelScope 的语音注册识别管线
+                        self.pipeline = pipeline(
+                            task=Tasks.speaker_verification,
+                            model=self.model_path
+                        )
+                        logger.info(f"✓ ModelScope ECAPA-TDNN 管线加载成功: {self.model_path}")
+                    
+                    def to(self, device):
+                        self.device = device
+                        return self
+                    
+                    def eval(self):
                         return self
                     
                     def __call__(self, waveform):
@@ -220,26 +294,55 @@ class EmbeddingEngine:
                         if audio.ndim > 1:
                             audio = audio.squeeze()
                         
-                        # Resemblyzer 接受 [samples] 格式，采样率 16kHz
-                        # 提取嵌入（返回 (256,) 的 numpy 数组）
-                        embedding = self.encoder.embed_utterance(audio)
-                        
-                        # 转换为 torch tensor 并增加 batch 维度
-                        embedding_tensor = torch.from_numpy(embedding).float()
-                        if embedding_tensor.ndim == 1:
-                            embedding_tensor = embedding_tensor.unsqueeze(0)
-                        
-                        return embedding_tensor
+                        # ModelScope pipeline 期待字符串路径或 (audio_array, sample_rate) 元组
+                        # 直接调用底层模型提取嵌入
+                        try:
+                            # 将音频转为 tensor 并移到设备
+                            audio_tensor = torch.from_numpy(audio).float().unsqueeze(0).to(self.device)
+                            
+                            # 直接调用模型的 forward 方法
+                            with torch.no_grad():
+                                result = self.pipeline.model(audio_tensor)
+                            
+                            # 提取嵌入向量
+                            if isinstance(result, dict):
+                                embedding = result.get('spk_embedding', result.get('embedding', result.get('emb', result)))
+                            elif isinstance(result, (list, tuple)):
+                                embedding = result[0] if len(result) > 0 else result
+                            else:
+                                embedding = result
+                            
+                            # 转为 numpy
+                            if isinstance(embedding, torch.Tensor):
+                                embedding = embedding.cpu().detach().numpy()
+                            elif not isinstance(embedding, np.ndarray):
+                                embedding = np.array(embedding, dtype=np.float32)
+                            
+                            # 转为 torch tensor
+                            embedding_tensor = torch.from_numpy(embedding).float()
+                            
+                            # 确保形状正确 (batch, dim)
+                            if embedding_tensor.ndim == 1:
+                                embedding_tensor = embedding_tensor.unsqueeze(0)
+                            
+                            return embedding_tensor
+                            
+                        except Exception as e:
+                            logger.error(f"ModelScope ECAPA 提取失败: {e}")
+                            raise
                 
-                self.model = ResemblyzerWrapper(self.device)
-                logger.info("✓ 真实声纹识别模型加载成功 (Resemblyzer GE2E)")
+                self.model = ModelScopePipelineWrapper(model_path, self.device)
+                logger.info("✓ 真实 ECAPA-TDNN 声纹识别模型加载成功（ModelScope）")
                 logger.info("✓ 使用真实的深度学习模型进行声纹识别")
                 return
                 
-            except ImportError:
-                logger.warning("Resemblyzer 未安装，尝试 SpeechBrain...")
+            except ImportError as e:
+                logger.warning(f"ModelScope Pipeline 未安装: {e}，尝试 SpeechBrain...")
             except Exception as e:
-                logger.warning(f"Resemblyzer 加载失败: {e}，尝试 SpeechBrain...")
+                logger.warning(f"ModelScope Pipeline 加载失败: {e}，尝试 SpeechBrain...")
+            
+            pass
+            pass
             
             # 尝试使用 SpeechBrain
             try:
@@ -247,6 +350,19 @@ class EmbeddingEngine:
                 from speechbrain.inference.speaker import EncoderClassifier
                 
                 logger.info("使用 SpeechBrain 加载 ECAPA-TDNN 模型...")
+                
+                # 修复：检查 torchaudio 版本兼容性
+                try:
+                    import torchaudio
+                    # 检查 torchaudio.list_audio_backends 是否存在
+                    if hasattr(torchaudio, 'list_audio_backends'):
+                        backends = torchaudio.list_audio_backends()
+                        logger.debug(f"torchaudio 可用后端: {backends}")
+                    else:
+                        # 新版本 torchaudio 可能不再支持 list_audio_backends
+                        logger.debug("torchaudio 新版本，跳过 backends 检查")
+                except Exception as e:
+                    logger.debug(f"torchaudio backends 检查跳过: {e}")
                 
                 # 检查是否存在模型文件
                 model_file = model_path / "ecapa_tdnn.bin"
@@ -309,11 +425,25 @@ class EmbeddingEngine:
                 
             except ImportError:
                 logger.warning("SpeechBrain 未安装，尝试使用 pyannote.audio...")
+            except AttributeError as e:
+                if 'list_audio_backends' in str(e):
+                    logger.warning(f"SpeechBrain torchaudio 兼容性问题: {e}，尝试使用 pyannote.audio...")
+                else:
+                    logger.warning(f"SpeechBrain 加载失败: {e}，尝试使用 pyannote.audio...")
             except Exception as e:
                 logger.warning(f"SpeechBrain 加载失败: {e}，尝试使用 pyannote.audio...")
             
             # 尝试使用 pyannote.audio
             try:
+                # 修复：在导入之前先设置环境变量抑制 torchcodec 警告
+                import os
+                os.environ['PYANNOTE_SUPPRESS_WARNINGS'] = '1'
+                
+                import warnings
+                # 过滤 torchcodec 相关警告
+                warnings.filterwarnings('ignore', message='.*torchcodec.*')
+                warnings.filterwarnings('ignore', message='.*FFmpeg.*')
+                
                 from pyannote.audio import Model, Inference
                 
                 logger.info("使用 pyannote.audio 加载说话人识别模型...")

@@ -81,6 +81,14 @@ class EmbeddingService:
         except Exception as e:
             logger.warning(f"从 HuggingFace 直接加载失败: {e}，尝试本地加载...")
         
+        # 尝试使用 trust_remote_code 加载本地模型
+        try:
+            logger.info("尝试使用 trust_remote_code 加载本地模型...")
+            self._load_local_model_with_trust()
+            return
+        except Exception as e:
+            logger.warning(f"使用 trust_remote_code 加载失败: {e}，继续尝试其他方式...")
+        
         # 检查模型是否存在
         if not self.check_model_exists(str(self.model_path)):
             if self.auto_download:
@@ -254,7 +262,7 @@ class EmbeddingService:
             logger.info(f"Loading model directly from HuggingFace Hub: {self.model_name}")
             
             # 直接从 HuggingFace 加载，使用系统缓存
-            self.model = SentenceTransformer(self.model_name, device=self.device)
+            self.model = SentenceTransformer(self.model_name, device=self.device, trust_remote_code=True)
             
             # 获取向量维度
             self._dimension = self.model.get_sentence_embedding_dimension()
@@ -263,6 +271,70 @@ class EmbeddingService:
             
         except Exception as e:
             logger.error(f"Failed to load model from Hub: {e}")
+            raise
+    
+    def _load_local_model_with_trust(self):
+        """使用 trust_remote_code 参数加载本地模型（解决配置兼容性问题）"""
+        try:
+            from sentence_transformers import SentenceTransformer
+            from transformers import AutoConfig
+            import json
+            from pathlib import Path
+            import os
+            
+            logger.info(f"Loading local model with fix: {self.model_path}")
+            
+            # 强制使用 safetensors 格式，绕过 PyTorch 版本限制和配置兼容性问题
+            # 设置环境变量，优先使用 safetensors
+            os.environ['SAFETENSORS_FAST_GPU'] = '1'
+            
+            # 尝试修复 transformers 库的配置读取问题
+            # 问题出现在 tokenizer_config.json 被读取为字典，而不是配置对象
+            config_path = Path(self.model_path) / "config.json"
+            tokenizer_config_path = Path(self.model_path) / "tokenizer_config.json"
+            
+            # 读取并重写 tokenizer_config.json，添加 model_type
+            if config_path.exists() and tokenizer_config_path.exists():
+                try:
+                    # 读取主配置
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        main_config = json.load(f)
+                    
+                    # 读取 tokenizer 配置
+                    with open(tokenizer_config_path, 'r', encoding='utf-8') as f:
+                        tokenizer_config = json.load(f)
+                    
+                    # 如果 tokenizer_config中没有model_type，添加它
+                    modified = False
+                    if 'model_type' not in tokenizer_config and 'model_type' in main_config:
+                        tokenizer_config['model_type'] = main_config['model_type']
+                        modified = True
+                        logger.info(f"添加 model_type 到 tokenizer_config: {main_config['model_type']}")
+                    
+                    # 如果修改了，写回文件
+                    if modified:
+                        with open(tokenizer_config_path, 'w', encoding='utf-8') as f:
+                            json.dump(tokenizer_config, f, ensure_ascii=False, indent=2)
+                        logger.info("tokenizer_config.json 已更新")
+                except Exception as e:
+                    logger.warning(f"修复配置文件失败: {e}，继续尝试加载...")
+            
+            # 现在尝试加载模型，使用 model_kwargs 传递 use_safetensors
+            logger.info("尝试使用 safetensors 格式加载模型...")
+            self.model = SentenceTransformer(
+                str(self.model_path), 
+                device=self.device,
+                trust_remote_code=True,
+                model_kwargs={'use_safetensors': True}  # 强制使用 safetensors
+            )
+            
+            # 获取向量维度
+            self._dimension = self.model.get_sentence_embedding_dimension()
+            
+            logger.info(f"Local model loaded successfully. Dimension: {self._dimension}")
+            
+        except Exception as e:
+            logger.error(f"Failed to load local model with trust_remote_code: {e}")
             raise
     
     def encode(self, text: str) -> List[float]:

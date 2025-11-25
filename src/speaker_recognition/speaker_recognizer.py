@@ -94,7 +94,7 @@ class SpeakerRecognizer:
         """获取默认配置"""
         return {
             'embedding': {
-                'model_path': 'models/speaker_recognition/ecapa-tdnn/',
+                'model_path': 'models/speaker_recognition/iic/speech_ecapa-tdnn_sv_en_voxceleb_16k',
                 'device': 'auto',
                 'auto_download': True,
                 'sample_rate': 16000,
