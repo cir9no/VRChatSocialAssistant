@@ -1,0 +1,53 @@
+# 说话人识别模块配置文件
+
+# 声纹提取模型配置
+embedding:
+  model_name: "ecapa-tdnn"
+  model_path: "models/speaker_recognition/ecapa-tdnn/"
+  device: "auto"  # auto, cpu, cuda
+  auto_download: true
+  download_source: "modelscope"
+  embedding_dim: 192
+  
+# 音频预处理
+preprocessing:
+  sample_rate: 16000
+  min_audio_length: 0.5
+  max_audio_length: 10.0
+  normalize: true
+  denoise: false
+  
+# 匹配配置
+matching:
+  similarity_method: "cosine"
+  base_threshold: 0.75
+  difference_threshold: 0.10
+  reject_threshold: 0.50
+  enable_adaptive_threshold: true
+  
+# 注册配置
+registration:
+  min_samples: 3
+  max_samples: 5
+  min_sample_duration: 2.0
+  max_sample_duration: 5.0
+  
+# 持续学习
+continuous_learning:
+  enable: true
+  high_confidence_threshold: 0.85
+  batch_size: 10
+  update_weight: 0.2
+  max_updates_per_day: 1
+  
+# 性能优化
+performance:
+  batch_inference: false
+  cache_embeddings: true
+  log_level: "INFO"
+  
+# 数据存储
+storage:
+  profiles_dir: "data/speaker_profiles/"
+  backup_enabled: true
+  backup_interval_days: 7
