@@ -111,12 +111,13 @@ src/speaker_recognition/
 从音频中提取192维声纹嵌入向量。
 
 **技术方案：**
-- 模型: pyannote.audio ECAPA-TDNN
+- 模型: SpeechBrain ECAPA-TDNN
 - 特征维度: 192
 - 采样率: 16kHz
 - 推理设备: CPU/CUDA（自动检测）
+- 模型源: HuggingFace (speechbrain/spkrec-ecapa-voxceleb)
 
-**注意：** 如果未安装 `pyannote.audio`，模块会自动使用简化的演示模型（仅用于测试，不具备真实识别能力）。
+**注意：** 需要安装 `speechbrain` 库：`pip install speechbrain`
 
 ### MatchingEngine（声纹匹配引擎）
 
@@ -148,9 +149,11 @@ src/speaker_recognition/
 ```yaml
 # 声纹提取模型配置
 embedding:
-  model_path: "models/speaker_recognition/ecapa-tdnn/"
+  model_name: "speechbrain-ecapa-tdnn"
+  model_path: "models/speaker_recognition/speechbrain/"
   device: "auto"  # auto, cpu, cuda
   auto_download: true
+  download_source: "huggingface"
   
 # 匹配配置
 matching:
@@ -223,7 +226,7 @@ vad.set_callback(on_speech_detected)
 
 ## 注意事项
 
-1. **首次运行：** 如果启用了 `auto_download`，模块会尝试从 ModelScope 下载声纹提取模型（约50MB）
+1. **首次运行：** 如果启用了 `auto_download`，模块会从 HuggingFace 下载 SpeechBrain ECAPA-TDNN 模型（约100MB）
 2. **GPU加速：** 如果有CUDA可用，会自动使用GPU加速嵌入提取
 3. **音频质量要求：**
    - 采样率: 16kHz
@@ -266,10 +269,8 @@ recognizer.register_speaker(
 
 **解决方法：**
 ```bash
-# 安装 pyannote.audio
-pip install pyannote.audio
-
-# 或手动下载模型到 models/speaker_recognition/ecapa-tdnn/
+# 安装 SpeechBrain
+pip install speechbrain
 ```
 
 ### 问题: 未检测到任何匹配

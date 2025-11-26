@@ -65,7 +65,7 @@ class ProfileDatabase:
                 embedding=embedding,
                 sample_count=metadata.get('sample_count', 1),
                 avg_duration=metadata.get('avg_duration', 0.0),
-                model_version=metadata.get('model_version', 'ecapa-tdnn-v1'),
+                model_version=metadata.get('model_version', 'speechbrain-ecapa-tdnn-v1'),
             )
             
             # 保存嵌入向量（NPY文件）

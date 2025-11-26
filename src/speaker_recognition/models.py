@@ -42,7 +42,7 @@ class ProfileData:
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())  # 最后更新时间
     sample_count: int = 1  # 注册时使用的音频样本数
     avg_duration: float = 0.0  # 平均样本时长（秒）
-    model_version: str = "ecapa-tdnn-v1"  # 使用的模型版本
+    model_version: str = "speechbrain-ecapa-tdnn-v1"  # 使用的模型版本
     embedding_file: str = ""  # 嵌入向量文件名
     
     def __post_init__(self):
@@ -76,7 +76,7 @@ class ProfileData:
             updated_at=data.get('updated_at', datetime.now().isoformat()),
             sample_count=data.get('sample_count', 1),
             avg_duration=data.get('avg_duration', 0.0),
-            model_version=data.get('model_version', 'ecapa-tdnn-v1'),
+            model_version=data.get('model_version', 'speechbrain-ecapa-tdnn-v1'),
             embedding_file=data.get('embedding_file', ''),
         )
 
